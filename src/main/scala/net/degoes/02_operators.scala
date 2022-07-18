@@ -556,8 +556,8 @@ object education {
      * Add a `+` operator that combines this quiz result with the specified
      * quiz result.
      */
-    def +(that: QuizResult): QuizResult =
-      QuizResult(correctPoints + that.correctPoints, bonusPoints + that.bonusPoints, wrongPoints + that.wrongPoints, wrong + that.wrong)
+    def +(that: QuizResult): QuizResult = ???
+//      QuizResult(correctPoints + that.correctPoints, bonusPoints + that.bonusPoints, wrongPoints + that.wrongPoints, wrong + that.wrong)
   }
   object QuizResult {
 
@@ -672,5 +672,5 @@ object education {
   val q2, q3, q4 = q1
   val hardBonus  = q1
   val easyBonus  = q2
-  val bonusQ     = hardBonus.check(_.wrongPoints > 0)(easyBonus, Quiz.empty).beronus
+  val bonusQ     = hardBonus.check(_.wrongPoints > 0)(easyBonus, Quiz.empty).bonus
 }

@@ -1,5 +1,8 @@
 package net.degoes
 
+import java.time.Instant
+import java.time.temporal.TemporalField
+
 /*
  * INTRODUCTION
  *
@@ -44,7 +47,13 @@ object spreadsheet {
 
   final case class Cell(col: Int, row: Int, contents: CalculatedValue)
 
-  sealed trait Value
+  sealed trait Value {
+    def -(that: Value): Value =
+      (this, that) match {
+        case (Value.Error(a), Value.Error(b)) => Value.Error(a + b)
+        case _                                => Value.Error("todo") // etc
+      }
+  }
   object Value {
     final case class Error(message: String) extends Value
     final case class Str(value: String)     extends Value
@@ -57,14 +66,19 @@ object spreadsheet {
    * Design a data type called `CalculatedValue`, which represents a `Value` that is dynamically
    * computed from a `Spreadsheet`.
    */
-  final case class CalculatedValue( /* ??? */ ) { self =>
+  final case class CalculatedValue(eval: Spreadsheet => Value) { self =>
 
     /**
      * EXERCISE 2
      *
      * Add an operator that returns a new `CalculatedValue` that is the negated version of this one.
      */
-    def unary_- : CalculatedValue = ???
+    def unary_- : CalculatedValue = CalculatedValue { c =>
+      eval(c) match {
+        case Value.Dbl(v) => Value.Dbl(-v)
+        case id           => Value.Error("cannot")
+      }
+    }
 
     /**
      * EXERCISE 3
@@ -72,7 +86,13 @@ object spreadsheet {
      * Add a binary operator `+` that returns a new `CalculatedValue` that is the sum of the two
      * calculated values.
      */
-    def +(that: CalculatedValue): CalculatedValue = ???
+    def +(that: CalculatedValue): CalculatedValue = CalculatedValue { s =>
+      (eval(s), that.eval(s)) match {
+        case (Value.Dbl(a), Value.Dbl(b)) => Value.Dbl(a + b)
+        case (Value.Str(a), Value.Str(b)) => Value.Str(a + b)
+        case _                            => Value.Error("error")
+      }
+    }
 
     /**
      * EXERCISE 4
@@ -80,7 +100,9 @@ object spreadsheet {
      * Add a binary operator `-` that returns a new `CalculatedValue` that is the difference of the
      * two calculated values.
      */
-    def -(that: CalculatedValue): CalculatedValue = ???
+    def -(that: CalculatedValue): CalculatedValue = CalculatedValue { sheet =>
+      eval(sheet) - that.eval(sheet)
+    }
 
     protected def binaryOp(that: CalculatedValue)(error: String)(
       f: PartialFunction[(Value, Value), Value]
@@ -93,7 +115,9 @@ object spreadsheet {
      *
      * Add a constructor that makes an `CalculatedValue` from a `Value`.
      */
-    def const(contents: Value): CalculatedValue = ???
+    def const(contents: Value): CalculatedValue = CalculatedValue { _ =>
+      contents
+    }
 
     /**
      * EXERCISE 6
@@ -101,7 +125,9 @@ object spreadsheet {
      * Add a constructor that provides access to the value of the
      * specified cell, identified by col/row.
      */
-    def at(col: Int, row: Int): CalculatedValue = ???
+    def at(col: Int, row: Int): CalculatedValue = CalculatedValue { sheet =>
+      sheet.valueAt(col, row).eval(sheet)
+    }
   }
 
   /**
@@ -109,7 +135,7 @@ object spreadsheet {
    *
    * Describe a cell whose contents are the sum of the cells at (0, 0) and (1, 0).
    */
-  lazy val cell1: Cell = ???
+  lazy val cell1: Cell = Cell(10, 10, CalculatedValue.at(0, 0) + CalculatedValue.at(1, 0))
 }
 
 /**
@@ -178,7 +204,16 @@ object etl {
    * Also mock out, but do not implement, a method on each repository type called
    * `load`, which returns a `DataStream`.
    */
-  type DataRepo
+  sealed trait DataRepo {
+    def load: DataStream = ???
+  }
+
+  object DataRepo {
+    final case class FTP(url: String)           extends DataRepo
+    final case class URL(value: String)         extends DataRepo
+    final case class AWS(s3: String)            extends DataRepo
+    final case class DB(jdbcConnection: String) extends DataRepo
+  }
 
   sealed trait FileFormat
   object FileFormat {
@@ -193,7 +228,12 @@ object etl {
    * Design a data type that models the type of primitives the ETL pipeline
    * has access to. This will include string, numeric, and date/time data.
    */
-  type DataType
+  sealed trait DataType
+  object DataType {
+    case object StringType   extends DataType
+    case object NumericType  extends DataType
+    case object DateTimeType extends DataType
+  }
 
   /**
    * EXERCISE 3
@@ -209,7 +249,23 @@ object etl {
 
     def coerce(otherType: DataType): Option[DataValue]
   }
-  object DataValue {}
+  object DataValue {
+    final case class Text(value: String) extends DataValue {
+      def dataType: DataType.StringType.type = DataType.StringType
+
+      def coerce(otherType: DataType): Option[DataValue] =
+        otherType match {
+          case DataType.StringType  => Some(this)
+          case DataType.NumericType => value.toDoubleOption.map(Numeric)
+        }
+    }
+
+    final case class Numeric(value: Double) extends DataValue {
+      def dataType: DataType.NumericType.type = DataType.NumericType
+
+      def coerce(otherType: DataType): Option[DataValue] = ???
+    }
+  }
 
   /**
    * EXERCISE 4
@@ -220,7 +276,7 @@ object etl {
    *
    * Create a model of a pipeline, using `DataStream`.
    */
-  final case class Pipeline( /* ??? */ ) { self =>
+  final case class Pipeline(run: DataType => DataStream) { self =>
 
     /**
      * EXERCISE 5
@@ -235,7 +291,9 @@ object etl {
      * Merge Duplication:    ???
      * }}}
      */
-    def merge(that: Pipeline): Pipeline = ???
+    def merge(that: Pipeline): Pipeline = Pipeline { dataType =>
+      run(dataType).merge(that.run(dataType))
+    }
 
     /**
      * EXERCISE 6
@@ -243,7 +301,9 @@ object etl {
      * Add an `orElse` operator that models applying this pipeline, but if it
      * fails, switching over and trying another pipeline.
      */
-    def orElse(that: Pipeline): Pipeline = ???
+    def orElse(that: Pipeline): Pipeline = Pipeline { dataType =>
+      run(dataType).orElse(that.run(dataType))
+    }
 
     /**
      * EXERCISE 7
@@ -327,7 +387,7 @@ object pricing_fetcher {
    * indicate whether at any given `java.time.Instant`, it is time to fetch the
    * pricing data set.
    */
-  final case class Schedule( /* ??? */ ) { self =>
+  final case class Schedule(fetchNow: Instant => Boolean) { self =>
     /*
      * EXERCISE 2
      *
@@ -335,7 +395,9 @@ object pricing_fetcher {
      * yield the union of those schedules. That is, the fetch will occur
      * only when either of the schedules would have performed a fetch.
      */
-    def union(that: Schedule): Schedule = ???
+    def union(that: Schedule): Schedule = Schedule { time =>
+      fetchNow(time) || that.fetchNow(time)
+    }
 
     /**
      * EXERCISE 3
@@ -344,7 +406,9 @@ object pricing_fetcher {
      * yield the intersection of those schedules. That is, the fetch will occur
      * only when both of the schedules would have performed a fetch.
      */
-    def intersection(that: Schedule): Schedule = ???
+    def intersection(that: Schedule): Schedule = Schedule { time =>
+      fetchNow(time) && that.fetchNow(time)
+    }
 
     /**
      * EXERCISE 4
@@ -353,7 +417,9 @@ object pricing_fetcher {
      * when the original schedule would fetch, and will always fetch when the
      * original schedule would not fetch.
      */
-    def negate: Schedule = ???
+    def negate: Schedule = Schedule { time =>
+      !fetchNow(time)
+    }
   }
   object Schedule {
 
@@ -363,7 +429,9 @@ object pricing_fetcher {
      * Create a constructor for Schedule that models fetching on specific weeks
      * of the month.
      */
-    def weeks(weeks: Int*): Schedule = ???
+    def weeks(weeks: Int*): Schedule = Schedule { time =>
+      weeks.contains(time.getNano) // take normal week of year
+    }
 
     /**
      * EXERCISE 6

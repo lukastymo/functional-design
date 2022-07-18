@@ -1,7 +1,7 @@
 package net.degoes
 
 import net.degoes.ecommerce_marketing.abstract_encoding.EventPattern
-import net.degoes.education_executable.Quiz2.{ Bonus, MyQuizString }
+import net.degoes.education_executable.Quiz2.Bonus
 
 /*
  * INTRODUCTION
@@ -128,8 +128,8 @@ object education_executable {
  * Consider an email marketing platform, which allows users to upload contacts.
  */
 object contact_processing2 {
-  import contact_processing._
   import SchemaMapping2._
+  import contact_processing._
 
   sealed trait SchemaMapping2 {
 
@@ -394,8 +394,8 @@ object spreadsheet2 {
   def evaluate(spreadsheet: Spreadsheet, cell: Cell): Value = spreadsheet.valueAt(cell.col, cell.row) match {
     case Not(v) =>
       evaluate(spreadsheet, cell.copy(contents = v)) match {
-        case Value.Error(message) | Value.Str(value) => Value.Str("error")
-        case Value.Dbl(value)                        => Value.Dbl(value + 1) // negate
+        case Value.Error(_) | Value.Str(_) => Value.Str("error")
+        case Value.Dbl(value)              => Value.Dbl(value + 1) // negate
       }
     case Add(left, right) => ??? // like above
     case Const(v)         => v
@@ -475,8 +475,8 @@ object ecommerce_marketing {
       final case class HasValue(attr: Attribute, value: Value) extends EventPattern
 
     }
-    import HistoryPattern._
     import Attribute.EventType
+    import HistoryPattern._
 
     val example = eventType(EventType.AddItem) *> eventType(EventType.Abandon)
 
@@ -523,7 +523,6 @@ object ecommerce_marketing {
    * a match.
    */
   object executable_encoding {
-    import HistoryPattern._
 
     final case class HistoryPattern(matches: (List[Event]) => Boolean) {
       def *>(that: HistoryPattern): HistoryPattern = HistoryPattern { history =>

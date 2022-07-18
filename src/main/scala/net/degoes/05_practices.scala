@@ -55,55 +55,56 @@ object email_filter3 {
 
     def ||(that: EmailFilter): EmailFilter = EmailFilter.InclusiveOr(self, that)
 
-    def ^^(that: EmailFilter): EmailFilter = EmailFilter.ExclusiveOr(self, that)
+    def ^^(that: EmailFilter): EmailFilter = (self && !that) || (!self && that)
+
+    def unary_! : EmailFilter = EmailFilter.Not(this)
+
   }
   object EmailFilter {
     final case object Always                                            extends EmailFilter
-    final case object Never                                             extends EmailFilter
+    final case object Never /* never is not !Always */                  extends EmailFilter
     final case class And(left: EmailFilter, right: EmailFilter)         extends EmailFilter
+    final case class Not(filter: EmailFilter)                           extends EmailFilter
     final case class InclusiveOr(left: EmailFilter, right: EmailFilter) extends EmailFilter
-    final case class ExclusiveOr(left: EmailFilter, right: EmailFilter) extends EmailFilter
     final case class SenderEquals(target: Address)                      extends EmailFilter
-    final case class SenderNotEquals(target: Address)                   extends EmailFilter
     final case class RecipientEquals(target: Address)                   extends EmailFilter
-    final case class RecipientNotEquals(target: Address)                extends EmailFilter
-    final case class SenderIn(targets: Set[Address])                    extends EmailFilter
-    final case class RecipientIn(targets: Set[Address])                 extends EmailFilter
     final case class BodyContains(phrase: String)                       extends EmailFilter
-    final case class BodyNotContains(phrase: String)                    extends EmailFilter
     final case class SubjectContains(phrase: String)                    extends EmailFilter
-    final case class SubjectNotContains(phrase: String)                 extends EmailFilter
 
-    val always: EmailFilter = Always
+    val acceptAll: EmailFilter = Always
 
-    val never: EmailFilter = Always
+    val rejectAll: EmailFilter = Never
 
     def senderIs(sender: Address): EmailFilter = SenderEquals(sender)
 
-    def senderIsNot(sender: Address): EmailFilter = SenderNotEquals(sender)
+    def senderIsNot(sender: Address): EmailFilter = !(SenderEquals(sender))
 
     def recipientIs(recipient: Address): EmailFilter = RecipientEquals(recipient)
 
-    def recipientIsNot(recipient: Address): EmailFilter = RecipientNotEquals(recipient)
+    def recipientIsNot(recipient: Address): EmailFilter = !(RecipientEquals(recipient))
 
-    def senderIn(senders: Set[Address]): EmailFilter = SenderIn(senders)
+    def senderIn(senders: Set[Address]): EmailFilter = senders.foldLeft(EmailFilter.rejectAll) {
+      case (acc, sender) => acc || senderIs(sender)
+    }
 
-    def recipientIn(recipients: Set[Address]): EmailFilter = RecipientIn(recipients)
+    def recipientIn(recipients: Set[Address]): EmailFilter = recipients.foldLeft(EmailFilter.rejectAll) {
+      case (acc, recipient) => acc || recipientIs(recipient)
+    }
 
     def bodyContains(phrase: String): EmailFilter = BodyContains(phrase)
 
-    def bodyDoesNotContain(phrase: String): EmailFilter = BodyNotContains(phrase)
+    def bodyDoesNotContain(phrase: String): EmailFilter = !(BodyContains(phrase))
 
     def subjectContains(phrase: String): EmailFilter = SubjectContains(phrase)
 
-    def subjectDoesNotContain(phrase: String): EmailFilter = SubjectNotContains(phrase)
+    def subjectDoesNotContain(phrase: String): EmailFilter = !SubjectContains(phrase)
   }
 }
 
 /**
  * COMPOSABILITY - EXERCISE SET 2
  */
-object ui_components {
+object ui_components extends App {
 
   /**
    * EXERCISE 1
@@ -111,15 +112,107 @@ object ui_components {
    * The following API is not composable—there is no domain. Introduce a
    * domain with elements, constructors, and composable operators.
    */
+  // assuming we cannot touch this interface - add a wrapper around it
   trait Turtle { self =>
-    def turnLeft(degrees: Int): Unit
+    def turnLeft(degrees: Int) = println("left ")
 
-    def turnRight(degrees: Int): Unit
+    def turnRight(degrees: Int) = println("right ")
 
-    def goForward(): Unit
+    def goForward() = println("fwd ")
 
-    def goBackward(): Unit
+    def goBackward() = println("back ")
 
-    def draw(): Unit
+    def draw() = println(".")
   }
+
+  object executable {
+
+    sealed trait MyDrawing {
+      def execute(turtle: Turtle): Unit
+    }
+
+    object MyDrawing {
+      case object EmptyMyDrawing extends MyDrawing {
+        def execute(turtle: Turtle): Unit = ()
+      }
+      case object MyDrawingLive extends MyDrawing {
+        def execute(turtle: Turtle): Unit = turtle.draw()
+      }
+    }
+
+    final case class Drawing(execute: Turtle => Unit) {
+      def *>(that: Drawing): Drawing = Drawing { turtle =>
+        execute(turtle)
+        that.execute(turtle)
+      }
+
+      def goForward: Drawing = this *> Drawing.goForward
+
+      def turnLeft(degrees: Int): Drawing = this *> Drawing.turnLeft(degrees)
+
+      def draw: Drawing = this *> Drawing.draw
+
+      def repeat(n: Int): Drawing =
+        if (n <= 0) Drawing.empty
+        else this *> repeat(n - 1)
+    }
+
+    object Drawing {
+      val empty: Drawing = Drawing(_ => ())
+
+      val draw: Drawing = Drawing(turtle => turtle.draw())
+
+      def goForward: Drawing = Drawing(t => t.goForward())
+
+      def goBackward: Drawing = Drawing(t => t.goBackward())
+
+      def turnLeft(degrees: Int): Drawing = Drawing { turtle =>
+        turtle.turnLeft(degrees)
+      }
+
+      def turnRight(degrees: Int): Drawing = turnLeft(360 - degrees)
+    }
+
+    val mona: Drawing =
+      Drawing.draw.goForward.turnLeft(90).repeat(4)
+
+    mona.execute(new Turtle {})
+  }
+
+  object declarative {
+    sealed trait Drawing {
+      def *>(that: Drawing): Drawing = Drawing.Sequential(this, that)
+      def draw: Drawing              = this *> Drawing.draw
+      def goForward: Drawing         = this *> Drawing.goForward
+      def goBackward: Drawing        = this *> Drawing.goBackward
+      def repeat(n: Int): Drawing    = if (n <= 0) Drawing.blank else this *> this.repeat(n - 1)
+
+      def execute(turtle: Turtle): Unit =
+        this match {
+          case Drawing.Sequential(left, right) =>
+            left.execute(turtle)
+            right.execute(turtle)
+          case _ => ???
+        }
+    }
+
+    object Drawing {
+      case object Blank                                          extends Drawing
+      case object Draw                                           extends Drawing
+      case object GoForward                                      extends Drawing
+      case object GoBackward                                     extends Drawing
+      final case class Sequential(left: Drawing, right: Drawing) extends Drawing
+      final case class TurnLeft(degrees: Int)                    extends Drawing
+      final case class TurnRight(degrees: Int)                   extends Drawing
+
+      val blank: Drawing = Blank
+      val draw: Drawing  = Draw
+
+      def goForward: Drawing               = GoForward
+      def goBackward: Drawing              = GoBackward
+      def turnLeft(degrees: Int): Drawing  = TurnLeft(degrees)
+      def turnRight(degrees: Int): Drawing = TurnRight(degrees)
+    }
+  }
+
 }

@@ -672,5 +672,5 @@ object education {
   val q2, q3, q4 = q1
   val hardBonus  = q1
   val easyBonus  = q2
-  val bonusQ     = hardBonus.check(_.wrongPoints > 0)(easyBonus, Quiz.empty).bonus
+  val bonusQ     = hardBonus.check(_.wrongPoints > 0)(easyBonus, Quiz.empty).beronus
 }

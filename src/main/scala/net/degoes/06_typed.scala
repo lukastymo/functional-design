@@ -13,7 +13,7 @@ package net.degoes
  * Consider an application (such as the spreadsheet example) that needs to
  * calculate values in a user-defined way.
  */
-object executable_typed {
+object executable_typed extends App {
   trait Spreadsheet {
     def cols: Int
     def rows: Int
@@ -49,14 +49,17 @@ object executable_typed {
    * Design a data type called `CalculatedValue[A]`, whose type parameter `A`
    * represents the type of value dynamically computed from the spreadsheet.
    */
-  final case class CalculatedValue[+A]( /* ??? */ ) { self =>
+  final case class CalculatedValue[+A](execute: Spreadsheet => Either[String, A]) { self =>
 
     /**
      * EXERCISE 2
      *
      * Add an operator that returns a new `CalculatedValue` that is the negated version of this one.
      */
-    def unary_-[A1 >: A](implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def unary_-[A1 >: A](implicit numeric: Numeric[A1]): CalculatedValue[A1] =
+      CalculatedValue[A1] { spreadsheet =>
+        execute(spreadsheet).map(numeric.negate(_))
+      }
 
     /**
      * EXERCISE 3
@@ -64,7 +67,13 @@ object executable_typed {
      * Add a binary operator `+` that returns a new `CalculatedValue` that is the sum of the two
      * calculated values.
      */
-    def +[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def +[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] =
+      CalculatedValue[A1] { s =>
+        for {
+          left  <- execute(s)
+          right <- that.execute(s)
+        } yield (numeric.plus(left, right))
+      }
 
     /**
      * EXERCISE 4
@@ -72,7 +81,9 @@ object executable_typed {
      * Add a binary operator `-` that returns a new `CalculatedValue` that is the difference of the
      * two calculated values.
      */
-    def -[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def -[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] = CalculatedValue { s =>
+      (this + (-that)).execute(s)
+    }
 
     protected def binaryOp[A1 >: A](that: CalculatedValue[A1])(error: String)(
       f: PartialFunction[(A1, A1), A1]
@@ -85,7 +96,9 @@ object executable_typed {
      *
      * Add a constructor that makes an `CalculatedValue` from a `Value`.
      */
-    def const[Value](contents: Value): CalculatedValue[Value] = ???
+    def const[Value](contents: Value): CalculatedValue[Value] = CalculatedValue { _ =>
+      Right(contents)
+    }
 
     /**
      * EXERCISE 6
@@ -93,8 +106,22 @@ object executable_typed {
      * Add a constructor that provides access to the value of the
      * specified cell, identified by col/row.
      */
-    def at(col: Int, row: Int): CalculatedValue[Any] = ???
+    def at(col: Int, row: Int): CalculatedValue[Any] = CalculatedValue { s =>
+      Right(s.valueAt(col, row).execute(s))
+    }
   }
+
+  val a = CalculatedValue.const(42)
+  val b = CalculatedValue.const(58)
+  val c = a + b
+
+  println((a + c).execute(new Spreadsheet {
+    def cols: Int = 100
+
+    def rows: Int = 100
+
+    def valueAt(col: Int, row: Int): CalculatedValue[Any] = ???
+  }))
 }
 
 /**
@@ -133,20 +160,22 @@ object declarative_typed {
 
   final case class Cell[A](col: Int, row: Int, contents: CalculatedValue[A])
 
+  import CalculatedValue._
+
   /**
    * EXERCISE 1
    *
    * Design a data type called `CalculatedValue[A]`, whose type parameter `A`
    * represents the type of value dynamically computed from the spreadsheet.
    */
-  sealed trait CalculatedValue[+A] { self =>
+  sealed trait CalculatedValue[A] { self =>
 
     /**
      * EXERCISE 2
      *
      * Add an operator that returns a new `CalculatedValue` that is the negated version of this one.
      */
-    def unary_-[A1 >: A](implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def unary_-(implicit numeric: Numeric[A]): CalculatedValue[A] = Not(this, numeric)
 
     /**
      * EXERCISE 3
@@ -154,7 +183,7 @@ object declarative_typed {
      * Add a binary operator `+` that returns a new `CalculatedValue` that is the sum of the two
      * calculated values.
      */
-    def +[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def +(that: CalculatedValue[A])(implicit numeric: Numeric[A]): CalculatedValue[A] = Add(this, that, numeric)
 
     /**
      * EXERCISE 4
@@ -162,15 +191,17 @@ object declarative_typed {
      * Add a binary operator `-` that returns a new `CalculatedValue` that is the difference of the
      * two calculated values.
      */
-    def -[A1 >: A](that: CalculatedValue[A1])(implicit numeric: Numeric[A1]): CalculatedValue[A1] = ???
+    def -(that: CalculatedValue[A])(implicit numeric: Numeric[A]): CalculatedValue[A] = Add(this, -that, numeric)
 
-    protected def binaryOp[A1 >: A](that: CalculatedValue[A1])(error: String)(
-      f: PartialFunction[(A1, A1), A1]
-    ): CalculatedValue[A1] = ???
+    protected def binaryOp(that: CalculatedValue[A])(error: String)(
+      f: PartialFunction[(A, A), A]
+    ): CalculatedValue[A] = ???
   }
   object CalculatedValue {
-    final case class Integer(value: Int) extends CalculatedValue[Int]
-    final case class Str(value: String)  extends CalculatedValue[String]
+    final case class Const[A](a: A)                                                                   extends CalculatedValue[A]
+    final case class Fail(msg: String)                                                                extends CalculatedValue[Nothing]
+    final case class Not[A](v: CalculatedValue[A], numeric: Numeric[A])                               extends CalculatedValue[A]
+    final case class Add[A](left: CalculatedValue[A], right: CalculatedValue[A], numeric: Numeric[A]) extends CalculatedValue[A]
 
     /**
      * EXERCISE 5
@@ -188,12 +219,16 @@ object declarative_typed {
     def at(col: Int, row: Int): CalculatedValue[Any] = ???
   }
 
-  import CalculatedValue._
-
-  def calculate[A](expr: CalculatedValue[A]): A =
+  def calculate[A](expr: CalculatedValue[A]): Either[String, A] =
     expr match {
-      case Integer(v) => v
-      case Str(v)     => v
+      case Const(v)        => Right(v)
+      case Fail(msg)       => Left(msg)
+      case Not(v, numeric) => calculate(v).map(a => numeric.negate(a))
+      case Add(left, right, numeric) =>
+        for {
+          a <- calculate[A](left)
+          b <- calculate[A](right)
+        } yield (numeric.plus(a, b))
     }
 }
 

@@ -64,13 +64,12 @@ object untyped {
     def ||(that: JsonValidation): JsonValidation = ???
   }
   object JsonValidation {
-    case object Start                                                   extends JsonValidation
-    final case class DescendField(parent: JsonValidation, name: String) extends JsonValidation
-    final case class DescendElement(parent: JsonValidation, index: Int) extends JsonValidation
-    final case class DescendElements(parent: JsonValidation)            extends JsonValidation
-    final case class ValidateNumber(parent: JsonValidation, min: Option[BigDecimal], max: Option[BigDecimal])
-        extends JsonValidation
-    final case class ValidateString(parent: JsonValidation, pattern: Regex) extends JsonValidation
+    case object Start                                                                                         extends JsonValidation
+    final case class DescendField(parent: JsonValidation, name: String)                                       extends JsonValidation
+    final case class DescendElement(parent: JsonValidation, index: Int)                                       extends JsonValidation
+    final case class DescendElements(parent: JsonValidation)                                                  extends JsonValidation
+    final case class ValidateNumber(parent: JsonValidation, min: Option[BigDecimal], max: Option[BigDecimal]) extends JsonValidation
+    final case class ValidateString(parent: JsonValidation, pattern: Regex)                                   extends JsonValidation
 
     def start: JsonValidation = Start
   }

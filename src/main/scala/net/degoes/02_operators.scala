@@ -219,9 +219,7 @@ object contact_processing {
         if (i < columnNames.length && j < columnNames.length)
           schema
             .relocate(i, j)
-            .map(schema =>
-              copy(schema = schema, content = content.map(row => row.updated(j, row(i)).updated(i, row(j))))
-            )
+            .map(schema => copy(schema = schema, content = content.map(row => row.updated(j, row(i)).updated(i, row(j)))))
         else None
       }
 
@@ -340,9 +338,7 @@ object contact_processing {
     def combine(leftColumn: String, rightColumn: String)(newName: String)(
       f: (String, String) => String
     ): SchemaMapping =
-      SchemaMapping(csv =>
-        MappingResult.fromOption(csv.combine(leftColumn, rightColumn)(newName)(f), "Those columns do not exist")
-      )
+      SchemaMapping(csv => MappingResult.fromOption(csv.combine(leftColumn, rightColumn)(newName)(f), "Those columns do not exist"))
 
     /**
      * A constructor for `SchemaMapping` that moves the column of the
@@ -475,10 +471,9 @@ object education {
     def checker: Checker[A]
   }
   object Question {
-    final case class Text(question: String, checker: Checker[String]) extends Question[String]
-    final case class MultipleChoice(question: String, choices: Vector[String], checker: Checker[Int])
-        extends Question[Int]
-    final case class TrueFalse(question: String, checker: Checker[Boolean]) extends Question[Boolean]
+    final case class Text(question: String, checker: Checker[String])                                 extends Question[String]
+    final case class MultipleChoice(question: String, choices: Vector[String], checker: Checker[Int]) extends Question[Int]
+    final case class TrueFalse(question: String, checker: Checker[Boolean])                           extends Question[Boolean]
   }
 
   final case class QuizResult(correctPoints: Int, bonusPoints: Int, wrongPoints: Int, wrong: Vector[String]) { self =>

@@ -1,5 +1,8 @@
 package net.degoes
 
+import net.degoes.ecommerce_marketing.abstract_encoding.EventPattern
+import net.degoes.education_executable.Quiz2.{ Bonus, MyQuizString }
+
 /*
  * INTRODUCTION
  *
@@ -71,7 +74,7 @@ object education_executable {
      * Add an operator `+` that appends this quiz to the specified quiz. Model
      * this as pure data using a constructor for Quiz in the companion object.
      */
-    def +(that: Quiz2): Quiz2 = ???
+    def +(that: Quiz2): Quiz2 = Quiz2.Sequence(this, that)
 
     /**
      * EXERCISE 2
@@ -79,11 +82,30 @@ object education_executable {
      * Add a unary operator `bonus` that marks this quiz as a bonus quiz. Model
      * this as pure data using a constructor for Quiz in the companion object.
      */
-    def bonus: Quiz2 = ???
+    def bonus: Quiz2 = Bonus(this)
+
+    def run(): QuizResult = QuizResult.empty
   }
   object Quiz2 {
-    def apply[A](question: Question[A]): Quiz2 = ???
+    final case class Sequence(left: Quiz2, right: Quiz2) extends Quiz2 // constructor
+    final case class Bonus(quiz: Quiz2)                  extends Quiz2 // operator
+    final case class Single[A](question: Question[A])    extends Quiz2 // operator
+
+    def apply[A](question: Question[A]): Quiz2 = Single(question)
   }
+
+  val executed = (4 + 2) * 2
+
+  sealed trait IntExpr
+  object IntExpr {
+    final case class Lit(v: Int)                        extends IntExpr
+    final case class Add(left: IntExpr, right: IntExpr) extends IntExpr
+    final case class Mul(left: IntExpr, right: IntExpr) extends IntExpr
+
+    val described = Mul(Add(Lit(4), Lit(2)), Lit(2))
+  }
+
+  import Quiz2._
 
   /**
    * EXERCISE 3
@@ -92,7 +114,12 @@ object education_executable {
    * the interactive console operations that it describes, returning a
    * QuizResult value.
    */
-  def run(quiz: Quiz2): QuizResult = ???
+  def run(quiz: Quiz2): QuizResult = quiz match {
+    case Single(q)             => Quiz2(q).run()
+    case Sequence(left, right) => run(left) + run(right)
+    case Bonus(q)              => q.run().toBonus
+  }
+
 }
 
 /**
@@ -102,6 +129,7 @@ object education_executable {
  */
 object contact_processing2 {
   import contact_processing._
+  import SchemaMapping2._
 
   sealed trait SchemaMapping2 {
 
@@ -111,7 +139,7 @@ object contact_processing2 {
      * Add a `+` operator that models combining two schema mappings into one,
      * applying the effects of both in sequential order.
      */
-    def +(that: SchemaMapping2): SchemaMapping2 = ???
+    def +(that: SchemaMapping2): SchemaMapping2 = Sequence(this, that)
 
     /**
      * EXERCISE 2
@@ -120,16 +148,20 @@ object contact_processing2 {
      * one, applying the effects of the first one, unless it fails, and in that
      * case, applying the effects of the second one.
      */
-    def orElse(that: SchemaMapping2): SchemaMapping2 = ???
+    def orElse(that: SchemaMapping2): SchemaMapping2 = Fallback(this, that)
   }
   object SchemaMapping2 {
+    final case class Rename(oldName: String, newName: String)                extends SchemaMapping2
+    final case class Delete(name: String)                                    extends SchemaMapping2
+    final case class Sequence(left: SchemaMapping2, right: SchemaMapping2)   extends SchemaMapping2
+    final case class Fallback(first: SchemaMapping2, second: SchemaMapping2) extends SchemaMapping2
 
     /**
      * EXERCISE 3
      *
      * Add a constructor for `SchemaMapping` models renaming the column name.
      */
-    def rename(oldName: String, newName: String): SchemaMapping2 = ???
+    def rename(oldName: String, newName: String): SchemaMapping2 = Rename(oldName, newName)
 
     /**
      * EXERCISE 4
@@ -137,7 +169,7 @@ object contact_processing2 {
      * Add a constructor for `SchemaMapping` that models deleting the column
      * of the specified name.
      */
-    def delete(name: String): SchemaMapping2 = ???
+    def delete(name: String): SchemaMapping2 = Delete(name)
   }
 
   /**
@@ -146,7 +178,12 @@ object contact_processing2 {
    * Implement an interpreter for the `SchemaMapping` model that translates it into
    * into changes on the contact list.
    */
-  def run(mapping: SchemaMapping2, contacts: ContactsCSV): MappingResult[ContactsCSV] = ???
+  def run(mapping: SchemaMapping2, contacts: ContactsCSV): MappingResult[ContactsCSV] = mapping match {
+    case Rename(oldName, newName) => SchemaMapping.rename(oldName, newName).map(contacts)
+    case Delete(name)             => SchemaMapping.delete(name).map(contacts)
+    case Sequence(left, right)    => run(left, contacts).flatMap(x => run(right, x))
+    case Fallback(first, second)  => run(first, contacts).orElse(run(second, contacts))
+  }
 
   /**
    * BONUS EXERCISE
@@ -168,6 +205,8 @@ object email_filter2 {
   final case class Address(emailAddress: String)
   final case class Email(sender: Address, to: List[Address], subject: String, body: String)
 
+  import EmailFilter._
+
   sealed trait EmailFilter { self =>
 
     /**
@@ -176,7 +215,7 @@ object email_filter2 {
      * Add an "and" operator that models matching an email if both the first and
      * the second email filter match the email.
      */
-    def &&(that: EmailFilter): EmailFilter = ???
+    def &&(that: EmailFilter): EmailFilter = And(this, that)
 
     /**
      * EXERCISE 2
@@ -184,7 +223,7 @@ object email_filter2 {
      * Add an "or" operator that models matching an email if either the first or
      * the second email filter match the email.
      */
-    def ||(that: EmailFilter): EmailFilter = ???
+    def ||(that: EmailFilter): EmailFilter = Or(this, that)
 
     /**
      * EXERCISE 3
@@ -192,9 +231,16 @@ object email_filter2 {
      * Add a "negate" operator that models matching an email if this email filter
      * does NOT match an email.
      */
-    def negate: EmailFilter = ???
+    def negate: EmailFilter = Not(this)
   }
   object EmailFilter {
+    final case class And(left: EmailFilter, right: EmailFilter) extends EmailFilter
+    final case class Or(left: EmailFilter, right: EmailFilter)  extends EmailFilter
+    final case class Not(v: EmailFilter)                        extends EmailFilter
+    final case class SubjectContains(v: String)                 extends EmailFilter
+    final case class BodyContains(v: String)                    extends EmailFilter
+    final case class SenderIn(senders: Set[Address])            extends EmailFilter
+    final case class RecipientIn(recipients: Set[Address])      extends EmailFilter
 
     /**
      * EXERCISE 4
@@ -202,7 +248,7 @@ object email_filter2 {
      * Add a constructor for `EmailFilter` that models looking to see if the
      * subject of an email contains the specified word.
      */
-    def subjectContains(string: String): EmailFilter = ???
+    def subjectContains(string: String): EmailFilter = SubjectContains(string)
 
     /**
      * EXERCISE 5
@@ -210,7 +256,7 @@ object email_filter2 {
      * Add a constructor for `EmailFilter` that models looking to see if the
      * body of an email contains the specified word.
      */
-    def bodyContains(string: String): EmailFilter = ???
+    def bodyContains(string: String): EmailFilter = BodyContains(string)
 
     /**
      * EXERCISE 6
@@ -218,7 +264,7 @@ object email_filter2 {
      * Add a constructor for `EmailFilter` that models looking to see if the
      * sender of an email is in the specified set of senders.
      */
-    def senderIn(senders: Set[Address]): EmailFilter = ???
+    def senderIn(senders: Set[Address]): EmailFilter = SenderIn(senders)
 
     /**
      * EXERCISE 7
@@ -226,7 +272,7 @@ object email_filter2 {
      * Add a constructor for `EmailFilter` that models looking to see if the
      * recipient of an email is in the specified set of recipients.
      */
-    def recipientIn(recipients: Set[Address]): EmailFilter = ???
+    def recipientIn(recipients: Set[Address]): EmailFilter = RecipientIn(recipients)
   }
 
   /**
@@ -235,8 +281,15 @@ object email_filter2 {
    * Implement an interpreter for the `EmailFilter` model that translates it into
    * into tests on the specified email.
    */
-  def matches(filter: EmailFilter, email: Email): Boolean =
-    ???
+  def matches(filter: EmailFilter, email: Email): Boolean = filter match {
+    case And(left, right)        => matches(left, email) && matches(right, email)
+    case Or(left, right)         => matches(left, email) || matches(right, email)
+    case Not(v)                  => matches(v, email)
+    case SubjectContains(v)      => email.subject.contains(v)
+    case BodyContains(v)         => email.body.contains(v)
+    case SenderIn(senders)       => senders.contains(email.sender)
+    case RecipientIn(recipients) => recipients.contains(email.sender)
+  }
 
   /**
    * EXERCISE 9
@@ -244,7 +297,7 @@ object email_filter2 {
    * Implement a function to make an English-readable description of an
    * `EmailFilter`.
    */
-  def describe(filter: EmailFilter): Unit = ???
+  def describe(filter: EmailFilter): Unit = ??? // trivial, skipping
 }
 
 /**
@@ -290,6 +343,8 @@ object spreadsheet2 {
     final case class Dbl(value: Double)     extends Value
   }
 
+  import CalculatedValue._
+
   sealed trait CalculatedValue { self =>
 
     /**
@@ -298,7 +353,7 @@ object spreadsheet2 {
      * Add some operators to transform one `CalculatedValue` into another `CalculatedValue`. For
      * example, one operator could "negate" a double CalculatedValue.
      */
-    def negate: CalculatedValue = ???
+    def negate: CalculatedValue = Not(this)
 
     /**
      * EXERCISE 2
@@ -306,16 +361,20 @@ object spreadsheet2 {
      * Add some operators to combine `CalculatedValue`. For example, one operator
      * could sum two double CalculatedValueessions.
      */
-    def sum(that: CalculatedValue): CalculatedValue = ???
+    def sum(that: CalculatedValue): CalculatedValue = Add(this, that)
   }
   object CalculatedValue {
+    final case class Not(v: CalculatedValue)                            extends CalculatedValue
+    final case class Add(left: CalculatedValue, right: CalculatedValue) extends CalculatedValue
+    final case class Const(v: Value)                                    extends CalculatedValue
+    final case class At(col: Int, row: Int)                             extends CalculatedValue
 
     /**
      * EXERCISE 3
      *
      * Add a constructor that makes an CalculatedValue from a Value.
      */
-    def const(contents: Value): CalculatedValue = ???
+    def const(contents: Value): CalculatedValue = Const(contents)
 
     /**
      * EXERCISE 4
@@ -323,7 +382,7 @@ object spreadsheet2 {
      * Add a constructor that provides access to the value of the
      * specified cell, identified by col/row.
      */
-    def at(col: Int, row: Int): CalculatedValue = ???
+    def at(col: Int, row: Int): CalculatedValue = At(col, row)
   }
 
   /**
@@ -332,7 +391,16 @@ object spreadsheet2 {
    * Implement an interpreter for the `Value.CalculatedValue` model that translates it into
    * static cell contents by evaluating the CalculatedValueession.
    */
-  def evaluate(spreadsheet: Spreadsheet, cell: Cell): Value = ???
+  def evaluate(spreadsheet: Spreadsheet, cell: Cell): Value = spreadsheet.valueAt(cell.col, cell.row) match {
+    case Not(v) =>
+      evaluate(spreadsheet, cell.copy(contents = v)) match {
+        case Value.Error(message) | Value.Str(value) => Value.Str("error")
+        case Value.Dbl(value)                        => Value.Dbl(value + 1) // negate
+      }
+    case Add(left, right) => ??? // like above
+    case Const(v)         => v
+    case At(col, row)     => evaluate(spreadsheet, cell.copy(col = col, row = row))
+  }
 }
 
 /**
@@ -455,6 +523,32 @@ object ecommerce_marketing {
    * a match.
    */
   object executable_encoding {
-    type HistoryPattern
+    import HistoryPattern._
+
+    final case class HistoryPattern(matches: (List[Event]) => Boolean) {
+      def *>(that: HistoryPattern): HistoryPattern = HistoryPattern { history =>
+        this.matches(List(history.head)) && that.matches(history.tail)
+      }
+
+      def atLeast(n: Int): HistoryPattern = repeat(Some(n), None)
+
+      def atMost(n: Int): HistoryPattern = repeat(None, Some(n))
+
+      def between(min: Int, max: Int): HistoryPattern = repeat(Some(min), Some(max))
+
+      def repeat(min: Option[Int], max: Option[Int]): HistoryPattern = ???
+    }
+
+    object HistoryPattern {
+      val matches: HistoryPattern = HistoryPattern(_ => true)
+
+      def event(eventPattern: EventPattern): HistoryPattern = HistoryPattern {
+        case head :: _ => eventPattern.matches(head)
+        case Nil       => false
+      }
+
+      def eventType(eventType: String): HistoryPattern =
+        event(EventPattern.HasValue(Attribute.EventType, Value.Str(eventType)))
+    }
   }
 }
